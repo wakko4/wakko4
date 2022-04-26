@@ -27,50 +27,26 @@ Write-Verbose "Running as $($env:USERDOMAIN)\$($env:USERNAME) on $($env:Computer
 Write-Verbose "Using PowerShell version $($psversiontable.PSVersion)" 
 Write-Verbose "Using ActiveDirectory module $((Get-Module ActiveDirectory).version)" 
 
-Function Get-UsersCount {
-
-    [cmdletbinding(DefaultParameterSetName = "All")]
-    Param(
-        [parameter(ValueFromPipeline, HelpMessage = "Specify the name of a specific Domain name")]
-        [ValidateNotNullOrEmpty()]
-        [string]$Domain
-
-    )
-
-    Begin {
-            Write-Verbose "Using these bound parameters"  
-            $PSBoundParameters | Out-String | Write-Verbose 
-
-            $PSDefaultParameterValues["Get-AD*:Server"] = $Domain
-            $size = $null ; $addomain = $null
-    }
-    Process {
-        
-        # Check first if Domain is reachable 
-        try { $addomain = Get-ADDomain -ErrorAction SilentlyContinue
-               Write-Host "Domain $domain connected sucessfuly" -f Green 
-            }
-        catch { Write-Host "Cannot connect to domain $domain " -f Green    }
-
-        if($addomain){
-
-            $users = Get-ADObject -LDAPFilter "(&(sAMAccountType=805306368)(!userAccountControl:1.2.840.113556.1.4.803:=2)(!userAccountControl:1.2.840.113556.1.4.803:=65536)(pwdLastSet>=$pwdset))" -Properties * -ResultSetSize $size | select samaccountnam*,Userprincipal*,GivenName,sn,UserAccountControl,mail
-
-        }
-    } # End of Process 
-    End {
-        Write-Verbose "Ending $($myinvocation.mycommand) on $Domain"
-        if($addomain){ Return $users }
-    } #end
-}
-
-$Table = [System.Collections.ArrayList]@()$UserCount = [System.Collections.ArrayList]@()
+$Table = [System.Collections.ArrayList]@()
+$UserCount = [System.Collections.ArrayList]@()
 $domains = Import-Csv $FileBrowser.FileName 
 
 foreach($domain in $domains.Domain){
-    $temp = Get-UsersCount -Domain $domain| select @{n='Domain';E={$domain}},* 
-    $Table += $temp
-    $UserCount += [pscustomobject]@{ Domain = $domain ; Users = $temp.count }
+
+    # Check first if Domain is reachable 
+    try { $addomain = Get-ADDomain -ErrorAction SilentlyContinue
+            Write-Host "Domain $domain connected sucessfuly" -f Green 
+        }
+    catch { Write-Host "Cannot connect to domain $domain " -f Red   }
+
+    if($addomain){
+         # 805306368 [ObjectClass=Users] , UAC = 2 (Enabled Users [Not Disabled]) , UAC 65536 Exclude service accts. Pwd Never Exprire Unchecked
+        $users = Get-ADObject -LDAPFilter "(&(sAMAccountType=805306368)(!userAccountControl:1.2.840.113556.1.4.803:=2)(!userAccountControl:1.2.840.113556.1.4.803:=65536)(pwdLastSet>=$pwdset))" -Properties * -ResultSetSize $size | select samaccountnam*,Userprincipal*,GivenName,sn,UserAccountControl,mail
+
+        $UserCount += [pscustomobject]@{ Domain = $domain ; Users = $users.count }
+        $Table += $users
+        $addomain = $null
+    }    
 }
 
 $UserCount |  Export-Csv "$path\UsersCounts.csv" -NoTypeInformation
