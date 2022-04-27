@@ -32,7 +32,8 @@ $UserCount = [System.Collections.ArrayList]@()
 $domains = Import-Csv $FileBrowser.FileName 
 
 foreach($domain in $domains.Domain){
-
+    
+    $PSDefaultParameterValues["Get-AD*:Server"] = $domain
     # Check first if Domain is reachable 
     try { $addomain = Get-ADDomain -ErrorAction SilentlyContinue
             Write-Host "Domain $domain connected sucessfuly" -f Green 
@@ -40,7 +41,7 @@ foreach($domain in $domains.Domain){
     catch { Write-Host "Cannot connect to domain $domain " -f Red   }
 
     if($addomain){
-         # 805306368 [ObjectClass=Users] , UAC = 2 (Enabled Users [Not Disabled]) , UAC 65536 Exclude service accts. Pwd Never Exprire Unchecked
+         # 805306368 [ObjectClass=Users] | UAC = 2 (Enabled Users [Not Disabled]) | UAC 65536 Exclude service accts. Pwd Never Exprire Unchecked
         $users = Get-ADObject -LDAPFilter "(&(sAMAccountType=805306368)(!userAccountControl:1.2.840.113556.1.4.803:=2)(!userAccountControl:1.2.840.113556.1.4.803:=65536)(pwdLastSet>=$pwdset))" -Properties * -ResultSetSize $size | select samaccountnam*,Userprincipal*,GivenName,sn,UserAccountControl,mail
 
         $UserCount += [pscustomobject]@{ Domain = $domain ; Users = $users.count }
